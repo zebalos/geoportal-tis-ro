@@ -185,9 +185,23 @@ html, body {
 .panel-foot {
   margin-top: auto;
   padding: 14px 22px;
-  display: flex; flex-direction: column; gap: 3px;
-  font-family: var(--font-mono); font-size: 10.5px;
-  color: var(--c-ink-soft); border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+}
+.logo-inst {
+  height: 34px;
+  width: auto;
+  flex: 0 0 auto;
+}
+.foot-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--c-ink-soft);
 }
 
 /* ============================== MAPA ============================== */
