@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Geoportal · Potencial de Regeneração em Terras Indígenas — RO</title>
+  <meta name="description" content="Visualização de floresta secundária, potencial de regeneração natural e áreas de recomposição em Terras Indígenas de Rondônia." />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+  <!-- Fontes -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- ====================== PAINEL LATERAL ====================== -->
+    <aside id="panel" aria-label="Painel de informações">
+      <header class="panel-head">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div class="brand-text">
+            <h1>Potencial de Regeneração</h1>
+            <p>Terras Indígenas · Rondônia</p>
+          </div>
+        </div>
+      </header>
+
+      <!-- Seletor de TI -->
+      <section class="block">
+        <label class="field-label" for="ti-select">Terra Indígena</label>
+        <div class="select-wrap">
+          <select id="ti-select" aria-label="Selecionar Terra Indígena">
+            <option value="">Carregando…</option>
+          </select>
+          <span class="select-caret" aria-hidden="true"></span>
+        </div>
+        <button id="reset-btn" class="ghost-btn" type="button" hidden>
+          ← Ver todas as TIs
+        </button>
+      </section>
+
+      <!-- Estatísticas -->
+      <section class="block" id="stats-block">
+        <div class="stats-empty" id="stats-empty">
+          Selecione uma Terra Indígena para ver as estatísticas de regeneração.
+        </div>
+
+        <div class="stats" id="stats" hidden>
+          <h2 class="ti-name" id="ti-name">—</h2>
+          <div class="stat-row total">
+            <span class="stat-key">Superfície total</span>
+            <span class="stat-val"><span id="v-superficie">—</span> <em>ha</em></span>
+          </div>
+
+          <div class="stat-row">
+            <span class="dot" style="background:var(--c-floresta)"></span>
+            <span class="stat-key">Floresta secundária</span>
+            <span class="stat-val"><span id="v-floresta">—</span> <em>ha</em></span>
+          </div>
+          <div class="stat-row">
+            <span class="dot" style="background:var(--c-potencial)"></span>
+            <span class="stat-key">Potencial de regeneração</span>
+            <span class="stat-val"><span id="v-potencial">—</span> <em>ha</em></span>
+          </div>
+          <div class="stat-row">
+            <span class="dot" style="background:var(--c-recomposicao)"></span>
+            <span class="stat-key">Áreas de recomposição</span>
+            <span class="stat-val"><span id="v-recomposicao">—</span> <em>ha</em></span>
+          </div>
+          <div class="stat-row aldeia-row">
+            <span class="dot aldeia-dot"></span>
+            <span class="stat-key">Aldeias</span>
+            <span class="stat-val"><span id="v-aldeias">—</span></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Camadas / Legenda -->
+      <section class="block">
+        <h3 class="block-title">Camadas</h3>
+        <ul class="layers" id="layers">
+          <li>
+            <label class="toggle">
+              <input type="checkbox" data-layer="floresta" checked />
+              <span class="swatch" style="--c:var(--c-floresta)"></span>
+              <span class="toggle-label">Floresta secundária</span>
+            </label>
+          </li>
+          <li>
+            <label class="toggle">
+              <input type="checkbox" data-layer="potencial" checked />
+              <span class="swatch" style="--c:var(--c-potencial)"></span>
+              <span class="toggle-label">Potencial de regeneração natural</span>
+            </label>
+          </li>
+          <li>
+            <label class="toggle">
+              <input type="checkbox" data-layer="recomposicao" checked />
+              <span class="swatch" style="--c:var(--c-recomposicao)"></span>
+              <span class="toggle-label">Áreas de recomposição</span>
+            </label>
+          </li>
+          <li>
+            <label class="toggle">
+              <input type="checkbox" data-layer="aldeias" checked />
+              <span class="swatch aldeia-swatch"></span>
+              <span class="toggle-label">Aldeias</span>
+            </label>
+          </li>
+        </ul>
+      </section>
+
+      <footer class="panel-foot">
+        <span class="crs">EPSG:4326 · WGS 84</span>
+        <span class="src">Fundo: Google Satellite</span>
+      </footer>
+    </aside>
+
+    <!-- ====================== MAPA ====================== -->
+    <main id="map-wrap">
+      <div id="map"></div>
+      <button id="panel-toggle" class="panel-toggle" type="button" aria-label="Mostrar/ocultar painel">
+        <span></span><span></span><span></span>
+      </button>
+      <div id="loader" class="loader" hidden>
+        <span class="spin"></span><span class="loader-txt">Carregando camadas…</span>
+      </div>
+    </main>
+  </div>
+
+  <!-- Bibliotecas -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
