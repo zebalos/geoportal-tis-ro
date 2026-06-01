@@ -146,11 +146,13 @@ function aldeiaMarker(latlng) {
    a ordem: potencial (fundo) → floresta → recomposição (topo)
    --------------------------------------------------------------- */
 function enforceLayerOrder() {
-  overlay.potencial.bringToBack();
-  overlay.floresta.bringToBack();
-  overlay.recomposicao.bringToBack();
-  // tiLayer fica abaixo de tudo (contornos das TIs)
+  // bringToFront em ordem crescente de prioridade
+  // o último chamado fica no topo
   tiLayer.bringToBack();
+  overlay.potencial.bringToFront();
+  overlay.floresta.bringToFront();
+  overlay.recomposicao.bringToFront();
+  overlay.aldeias.bringToFront();
 }
 
 /* ---------------------------------------------------------------
@@ -232,7 +234,7 @@ async function loadAllLayers() {
 
   enforceLayerOrder();
   applyVisibility();
-  showLoader(false);
+  setTimeout(() => showLoader(false), 800);
 }
 
 /* ---------------------------------------------------------------
@@ -300,7 +302,7 @@ async function selectTI(nome) {
 
   enforceLayerOrder();
   applyVisibility();
-  showLoader(false);
+  setTimeout(() => showLoader(false), 800);
 }
 
 /* ---------------------------------------------------------------
