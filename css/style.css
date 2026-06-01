@@ -191,7 +191,7 @@ html, body {
   border-top: 1px solid var(--line);
 }
 .logo-inst {
-  height: 34px;
+  height: 30px;
   width: auto;
   flex: 0 0 auto;
 }
