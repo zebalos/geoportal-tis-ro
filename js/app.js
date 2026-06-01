@@ -8,7 +8,6 @@
    --------------------------------------------------------------- */
 const CFG = {
   dataDir: 'data',
-  // pastas das camadas carregadas por demanda (opção B)
   perTi: {
     floresta:     { folder: 'floresta_secundaria', color: '#ff0051' },
     potencial:    { folder: 'potencial_rn',        color: '#008bfb' },
@@ -16,31 +15,26 @@ const CFG = {
   },
   ink: '#243342',
   panel: '#ecf0f1',
-  // campos esperados na camada de TIs (vindos do seu GPKG)
   fields: {
-    nome:        'terrai_nom',
-    superficie:  'superficie',
-    floresta:    'floresta_ha',
-    potencial:   'potencial_ha',
-    recomposicao:'recomposicao_ha'
+    nome:         'terrai_nom',
+    superficie:   'superficie',
+    floresta:     'floresta_ha',
+    potencial:    'potencial_ha',
+    recomposicao: 'recomposicao_ha'
   }
 };
 
 /* ---------------------------------------------------------------
    UTILITÁRIOS
    --------------------------------------------------------------- */
-
-// Reproduz a convenção de slug do script Python que gerou os arquivos:
-// minúsculas, sem acento, não-alfanumérico -> "_", sem "_" nas pontas.
 function slugify(s) {
   return String(s)
-    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
 }
 
-// Formata número em pt-BR (1 casa decimal). Aceita string ou número.
 function fmt(v, dec = 1) {
   const n = Number(v);
   if (!isFinite(n)) return '—';
@@ -53,7 +47,6 @@ function fmtInt(v) {
   return isFinite(n) ? n.toLocaleString('pt-BR') : '—';
 }
 
-// fetch de GeoJSON; retorna null em 404/erro (camada ausente é normal na opção B)
 async function fetchGeoJSON(url) {
   try {
     const res = await fetch(url);
@@ -69,7 +62,7 @@ async function fetchGeoJSON(url) {
    MAPA + CAMADAS BASE
    --------------------------------------------------------------- */
 const map = L.map('map', { zoomControl: false, minZoom: 4, maxZoom: 19 })
-  .setView([-10.9, -62.8], 7); // centro aproximado de Rondônia
+  .setView([-10.9, -62.8], 7);
 
 L.control.zoom({ position: 'topright' }).addTo(map);
 
@@ -97,39 +90,37 @@ L.control.layers(
 /* ---------------------------------------------------------------
    GRUPOS DE CAMADAS
    --------------------------------------------------------------- */
-const tiLayer       = L.geoJSON(null, { style: styleTI, onEachFeature: onEachTI });
-const overlay = {
-  floresta:     L.geoJSON(null, { style: () => stylePoly(CFG.perTi.floresta.color) }),
-  potencial:    L.geoJSON(null, { style: () => stylePoly(CFG.perTi.potencial.color) }),
-  recomposicao: L.geoJSON(null, { style: () => stylePoly(CFG.perTi.recomposicao.color) }),
+const tiLayer  = L.geoJSON(null, { style: styleTI, onEachFeature: onEachTI });
+const overlay  = {
+  floresta:     L.geoJSON(null,  { style: () => stylePoly(CFG.perTi.floresta.color) }),
+  potencial:    L.geoJSON(null,  { style: () => stylePoly(CFG.perTi.potencial.color) }),
+  recomposicao: L.geoJSON(null,  { style: () => stylePoly(CFG.perTi.recomposicao.color) }),
   aldeias:      L.layerGroup()
 };
+
 tiLayer.addTo(map);
 overlay.potencial.addTo(map);
 overlay.floresta.addTo(map);
 overlay.recomposicao.addTo(map);
 overlay.aldeias.addTo(map);
 
-// visibilidade controlada pelos checkboxes
 const visible = { floresta: true, potencial: true, recomposicao: true, aldeias: true };
 
 /* ---------------------------------------------------------------
    ESTILOS
    --------------------------------------------------------------- */
-function styleTI(feature) {
-  return {
-    color: CFG.ink, weight: 1.6, opacity: 0.9,
-    fillColor: CFG.ink, fillOpacity: 0.04
-  };
+function styleTI() {
+  return { color: CFG.ink, weight: 1.6, opacity: 0.9,
+           fillColor: CFG.ink, fillOpacity: 0.04 };
 }
 function styleTIHighlight() {
-  return { color: CFG.ink, weight: 3, opacity: 1, fillColor: CFG.ink, fillOpacity: 0 };
+  return { color: CFG.ink, weight: 3, opacity: 1,
+           fillColor: CFG.ink, fillOpacity: 0 };
 }
 function stylePoly(color) {
-  return { color: color, weight: 0.6, opacity: 0.9, fillColor: color, fillOpacity: 0.55 };
+  return { color, weight: 0.6, opacity: 0.9, fillColor: color, fillOpacity: 0.55 };
 }
 
-// marcador "alvo" das aldeias: círculo externo claro + interno escuro
 function aldeiaMarker(latlng) {
   const html =
     '<svg width="16" height="16" viewBox="0 0 16 16">' +
@@ -137,31 +128,126 @@ function aldeiaMarker(latlng) {
       '<circle cx="8" cy="8" r="2.8" fill="' + CFG.ink + '"/>' +
     '</svg>';
   return L.marker(latlng, {
-    icon: L.divIcon({ className: 'aldeia-marker', html, iconSize: [16,16], iconAnchor: [8,8] })
+    icon: L.divIcon({ className: 'aldeia-marker', html, iconSize:[16,16], iconAnchor:[8,8] })
   });
 }
 
 /* ---------------------------------------------------------------
    INTERAÇÃO COM A CAMADA DE TIs
    --------------------------------------------------------------- */
-let allAldeias = null;        // FeatureCollection completa (carregada uma vez)
-let selectedLayer = null;     // camada Leaflet da TI selecionada
+let allAldeias   = null;
+let selectedLayer = null;
+let modoGeral    = true; // true = "Todas as TIs"
 
 function onEachTI(feature, layer) {
   const nome = feature.properties[CFG.fields.nome] || 'Terra Indígena';
   layer.bindTooltip(nome, { sticky: true, direction: 'top', opacity: 0.95 });
-  layer.on('click', () => selectTI(nome));
+  layer.on('click', () => {
+    document.getElementById('ti-select').value = nome;
+    selectTI(nome);
+  });
 }
 
 /* ---------------------------------------------------------------
-   SELEÇÃO DE TI  →  carrega camadas por demanda + atualiza painel
+   VISÃO GERAL — carrega TODAS as camadas e stats agregadas
+   --------------------------------------------------------------- */
+async function loadAllLayers() {
+  modoGeral = true;
+  document.getElementById('reset-btn').hidden = true;
+
+  // limpa seleção anterior
+  if (selectedLayer) { selectedLayer.setStyle(styleTI()); selectedLayer = null; }
+  ['floresta','potencial','recomposicao'].forEach(k => overlay[k].clearLayers());
+  overlay.aldeias.clearLayers();
+
+  // stats agregadas (somadas dos atributos das TIs)
+  updatePanelAll();
+
+  // zoom para todas as TIs
+  if (tiLayer.getLayers().length)
+    map.fitBounds(tiLayer.getBounds(), { padding: [30, 30] });
+
+  // lista de nomes das TIs
+  const nomes = [];
+  tiLayer.eachLayer(l => { if (l.feature) nomes.push(l.feature.properties[CFG.fields.nome]); });
+  const total = nomes.length * Object.keys(CFG.perTi).length;
+  let carregados = 0;
+
+  setLoaderText(`Carregando camadas… (0 / ${total})`);
+  showLoader(true);
+
+  // carrega todos os por_ti em paralelo
+  const jobs = [];
+  for (const nome of nomes) {
+    const slug = slugify(nome);
+    for (const [key, conf] of Object.entries(CFG.perTi)) {
+      jobs.push(
+        fetchGeoJSON(`${CFG.dataDir}/por_ti/${conf.folder}/${slug}.geojson`)
+          .then(gj => {
+            if (gj) overlay[key].addData(gj);
+            carregados++;
+            setLoaderText(`Carregando camadas… (${carregados} / ${total})`);
+          })
+      );
+    }
+  }
+
+  // renderiza todas as aldeias
+  if (allAldeias) {
+    allAldeias.features.forEach(pt => {
+      try {
+        const [lng, lat] = pt.geometry.coordinates;
+        const m = aldeiaMarker([lat, lng]);
+        const nm = pt.properties && (pt.properties.nome_aldei || pt.properties.nome || '');
+        if (nm) m.bindPopup(
+          '<div class="popup-title">' + nm + '</div><div class="popup-sub">Aldeia</div>'
+        );
+        overlay.aldeias.addLayer(m);
+      } catch(e) { /* geometria inválida */ }
+    });
+    document.getElementById('v-aldeias').textContent =
+      fmtInt(allAldeias.features.length);
+  }
+
+  await Promise.all(jobs);
+  applyVisibility();
+  showLoader(false);
+}
+
+/* ---------------------------------------------------------------
+   STATS AGREGADAS (Todas as TIs)
+   --------------------------------------------------------------- */
+function updatePanelAll() {
+  let superficie = 0, floresta = 0, potencial = 0, recomposicao = 0;
+  let nTIs = 0;
+  tiLayer.eachLayer(l => {
+    if (!l.feature) return;
+    const p = l.feature.properties;
+    superficie   += Number(p[CFG.fields.superficie])   || 0;
+    floresta     += Number(p[CFG.fields.floresta])     || 0;
+    potencial    += Number(p[CFG.fields.potencial])    || 0;
+    recomposicao += Number(p[CFG.fields.recomposicao]) || 0;
+    nTIs++;
+  });
+
+  document.getElementById('stats-empty').hidden = true;
+  document.getElementById('stats').hidden = false;
+  document.getElementById('ti-name').textContent = `Todas as TIs (${nTIs})`;
+  document.getElementById('v-superficie').textContent  = fmt(superficie);
+  document.getElementById('v-floresta').textContent    = fmt(floresta);
+  document.getElementById('v-potencial').textContent   = fmt(potencial);
+  document.getElementById('v-recomposicao').textContent= fmt(recomposicao);
+  document.getElementById('v-aldeias').textContent     =
+    allAldeias ? fmtInt(allAldeias.features.length) : '—';
+}
+
+/* ---------------------------------------------------------------
+   SELEÇÃO DE TI INDIVIDUAL
    --------------------------------------------------------------- */
 async function selectTI(nome) {
-  const select = document.getElementById('ti-select');
-  if (select.value !== nome) select.value = nome;
+  modoGeral = false;
   document.getElementById('reset-btn').hidden = false;
 
-  // localiza a feature da TI
   let tiFeature = null;
   tiLayer.eachLayer(l => {
     if (l.feature && l.feature.properties[CFG.fields.nome] === nome) {
@@ -175,15 +261,14 @@ async function selectTI(nome) {
   if (!tiFeature) return;
 
   updatePanel(tiFeature);
-  showLoader(true);
 
-  // limpa overlays por-TI
-  ['floresta', 'potencial', 'recomposicao'].forEach(k => overlay[k].clearLayers());
+  ['floresta','potencial','recomposicao'].forEach(k => overlay[k].clearLayers());
   overlay.aldeias.clearLayers();
 
-  const slug = slugify(nome);
+  setLoaderText('Carregando camadas…');
+  showLoader(true);
 
-  // carrega as 3 camadas por TI em paralelo
+  const slug = slugify(nome);
   const jobs = Object.entries(CFG.perTi).map(async ([key, conf]) => {
     const url = `${CFG.dataDir}/por_ti/${conf.folder}/${slug}.geojson`;
     const gj = await fetchGeoJSON(url);
@@ -191,7 +276,6 @@ async function selectTI(nome) {
   });
   await Promise.all(jobs);
 
-  // aldeias dentro da TI (point-in-polygon via Turf — independe de campo de código)
   const nAldeias = renderAldeiasInside(tiFeature);
   document.getElementById('v-aldeias').textContent = fmtInt(nAldeias);
 
@@ -199,7 +283,6 @@ async function selectTI(nome) {
   showLoader(false);
 }
 
-// usa Turf para contar/desenhar só as aldeias dentro do polígono da TI
 function renderAldeiasInside(tiFeature) {
   if (!allAldeias) return 0;
   let count = 0;
@@ -209,38 +292,37 @@ function renderAldeiasInside(tiFeature) {
         const [lng, lat] = pt.geometry.coordinates;
         const m = aldeiaMarker([lat, lng]);
         const nm = pt.properties && (pt.properties.nome_aldei || pt.properties.nome || '');
-        if (nm) m.bindPopup('<div class="popup-title">' + nm + '</div><div class="popup-sub">Aldeia</div>');
+        if (nm) m.bindPopup(
+          '<div class="popup-title">' + nm + '</div><div class="popup-sub">Aldeia</div>'
+        );
         overlay.aldeias.addLayer(m);
         count++;
       }
-    } catch (e) { /* geometria inválida → ignora */ }
+    } catch(e) { /* geometria inválida */ }
   });
   return count;
 }
 
 /* ---------------------------------------------------------------
-   PAINEL
+   PAINEL — TI individual
    --------------------------------------------------------------- */
 function updatePanel(feature) {
   const p = feature.properties;
   document.getElementById('stats-empty').hidden = true;
   document.getElementById('stats').hidden = false;
-  document.getElementById('ti-name').textContent = p[CFG.fields.nome] || '—';
-  document.getElementById('v-superficie').textContent  = fmt(p[CFG.fields.superficie]);
-  document.getElementById('v-floresta').textContent    = fmt(p[CFG.fields.floresta]);
-  document.getElementById('v-potencial').textContent   = fmt(p[CFG.fields.potencial]);
-  document.getElementById('v-recomposicao').textContent= fmt(p[CFG.fields.recomposicao]);
+  document.getElementById('ti-name').textContent        = p[CFG.fields.nome] || '—';
+  document.getElementById('v-superficie').textContent   = fmt(p[CFG.fields.superficie]);
+  document.getElementById('v-floresta').textContent     = fmt(p[CFG.fields.floresta]);
+  document.getElementById('v-potencial').textContent    = fmt(p[CFG.fields.potencial]);
+  document.getElementById('v-recomposicao').textContent = fmt(p[CFG.fields.recomposicao]);
 }
 
+/* ---------------------------------------------------------------
+   RESET — volta para visão geral
+   --------------------------------------------------------------- */
 function resetView() {
   document.getElementById('ti-select').value = '';
-  document.getElementById('reset-btn').hidden = true;
-  document.getElementById('stats').hidden = true;
-  document.getElementById('stats-empty').hidden = false;
-  if (selectedLayer) { selectedLayer.setStyle(styleTI()); selectedLayer = null; }
-  ['floresta','potencial','recomposicao'].forEach(k => overlay[k].clearLayers());
-  overlay.aldeias.clearLayers();
-  if (tiLayer.getLayers().length) map.fitBounds(tiLayer.getBounds(), { padding: [30, 30] });
+  loadAllLayers();
 }
 
 /* ---------------------------------------------------------------
@@ -250,35 +332,43 @@ function applyVisibility() {
   Object.keys(visible).forEach(k => {
     const layer = overlay[k];
     if (visible[k]) { if (!map.hasLayer(layer)) layer.addTo(map); }
-    else { if (map.hasLayer(layer)) map.removeLayer(layer); }
+    else            { if ( map.hasLayer(layer)) map.removeLayer(layer); }
   });
 }
 
 /* ---------------------------------------------------------------
    UI HELPERS
    --------------------------------------------------------------- */
-function showLoader(on) { document.getElementById('loader').hidden = !on; }
+function showLoader(on) {
+  document.getElementById('loader').hidden = !on;
+}
+function setLoaderText(txt) {
+  const el = document.querySelector('.loader-txt');
+  if (el) el.textContent = txt;
+}
 
 /* ---------------------------------------------------------------
    INICIALIZAÇÃO
    --------------------------------------------------------------- */
 async function init() {
-  // checkboxes de camada
+  // checkboxes
   document.querySelectorAll('#layers input[data-layer]').forEach(cb => {
     cb.addEventListener('change', e => {
       visible[e.target.dataset.layer] = e.target.checked;
       applyVisibility();
     });
   });
+
   document.getElementById('reset-btn').addEventListener('click', resetView);
+
   document.getElementById('ti-select').addEventListener('change', e => {
     if (e.target.value) selectTI(e.target.value);
     else resetView();
   });
 
-  // toggle do painel (mobile)
+  // toggle painel (mobile)
   const panel = document.getElementById('panel');
-  const tgl = document.getElementById('panel-toggle');
+  const tgl   = document.getElementById('panel-toggle');
   tgl.addEventListener('click', () => {
     panel.classList.toggle('hidden');
     tgl.classList.toggle('shifted', !panel.classList.contains('hidden'));
@@ -289,26 +379,31 @@ async function init() {
   const tis = await fetchGeoJSON(`${CFG.dataDir}/terras_indigenas.geojson`);
   if (tis) {
     tiLayer.addData(tis);
-    if (tiLayer.getLayers().length) {
+    if (tiLayer.getLayers().length)
       map.fitBounds(tiLayer.getBounds(), { padding: [30, 30] });
-    }
-    // popula o seletor em ordem alfabética
+
     const nomes = tis.features
       .map(f => f.properties[CFG.fields.nome])
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
     const select = document.getElementById('ti-select');
-    select.innerHTML = '<option value="">Todas as TIs (' + nomes.length + ')</option>' +
+    select.innerHTML =
+      `<option value="">Todas as TIs (${nomes.length})</option>` +
       nomes.map(n => `<option value="${n}">${n}</option>`).join('');
   } else {
     document.getElementById('ti-select').innerHTML =
       '<option value="">Erro ao carregar TIs</option>';
-    console.error('Não encontrei data/terras_indigenas.geojson');
+    console.error('data/terras_indigenas.geojson não encontrado');
+    return;
   }
 
-  // 2) Aldeias (carregadas uma vez; filtradas por TI via Turf)
+  // 2) Aldeias
   allAldeias = await fetchGeoJSON(`${CFG.dataDir}/aldeias.geojson`);
   if (!allAldeias) console.warn('data/aldeias.geojson não encontrado.');
+
+  // 3) Carrega todas as camadas como visão inicial
+  await loadAllLayers();
 }
 
 init();
