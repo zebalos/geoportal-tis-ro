@@ -105,7 +105,10 @@ const overlay = {
   aldeias:      L.layerGroup()
 };
 tiLayer.addTo(map);
-Object.values(overlay).forEach(l => l.addTo(map));
+overlay.potencial.addTo(map);
+overlay.floresta.addTo(map);
+overlay.recomposicao.addTo(map);
+overlay.aldeias.addTo(map);
 
 // visibilidade controlada pelos checkboxes
 const visible = { floresta: true, potencial: true, recomposicao: true, aldeias: true };
