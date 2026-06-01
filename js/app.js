@@ -90,18 +90,17 @@ L.control.layers(
 
 /* ---------------------------------------------------------------
    GRUPOS DE CAMADAS
-   Ordem de adição ao mapa define a hierarquia base.
-   Recomposição adicionada por último = topo da pilha.
+   IMPORTANTE: L.featureGroup() em vez de layerGroup() para que
+   todas as overlays suportem bringToFront/bringToBack.
    --------------------------------------------------------------- */
 const tiLayer = L.geoJSON(null, { style: styleTI, onEachFeature: onEachTI });
 const overlay = {
   potencial:    L.geoJSON(null, { style: () => stylePoly(CFG.perTi.potencial.color) }),
   floresta:     L.geoJSON(null, { style: () => stylePoly(CFG.perTi.floresta.color) }),
   recomposicao: L.geoJSON(null, { style: () => stylePoly(CFG.perTi.recomposicao.color) }),
-  aldeias:      L.layerGroup()
+  aldeias:      L.featureGroup()
 };
 
-// Adição em ordem crescente de prioridade visual
 tiLayer.addTo(map);
 overlay.potencial.addTo(map);
 overlay.floresta.addTo(map);
@@ -115,13 +114,13 @@ const visible = { floresta: true, potencial: true, recomposicao: true, aldeias: 
    --------------------------------------------------------------- */
 function styleTI() {
   return {
-    color: CFG.ink, weight: 1.6, opacity: 0.9,
+    color: CFG.panel, weight: 1.6, opacity: 0.9,
     fillColor: CFG.ink, fillOpacity: 0.04
   };
 }
 function styleTIHighlight() {
   return {
-    color: CFG.ink, weight: 3, opacity: 1,
+    color: CFG.panel, weight: 3, opacity: 1,
     fillColor: CFG.ink, fillOpacity: 0
   };
 }
@@ -142,17 +141,20 @@ function aldeiaMarker(latlng) {
 
 /* ---------------------------------------------------------------
    HIERARQUIA DE RENDERIZAÇÃO
-   Chamada após qualquer carregamento assíncrono para garantir
-   a ordem: potencial (fundo) → floresta → recomposição (topo)
+   Ordem (de baixo para cima):
+     tiLayer  →  potencial  →  floresta  →  recomposição  →  aldeias
    --------------------------------------------------------------- */
 function enforceLayerOrder() {
-  // bringToFront em ordem crescente de prioridade
-  // o último chamado fica no topo
-  tiLayer.bringToBack();
-  overlay.potencial.bringToFront();
-  overlay.floresta.bringToFront();
-  overlay.recomposicao.bringToFront();
-  overlay.aldeias.bringToFront();
+  try {
+    // Só reordena camadas que estão atualmente no mapa
+    if (map.hasLayer(tiLayer))              tiLayer.bringToBack();
+    if (map.hasLayer(overlay.potencial))    overlay.potencial.bringToFront();
+    if (map.hasLayer(overlay.floresta))     overlay.floresta.bringToFront();
+    if (map.hasLayer(overlay.recomposicao)) overlay.recomposicao.bringToFront();
+    if (map.hasLayer(overlay.aldeias))      overlay.aldeias.bringToFront();
+  } catch (e) {
+    console.warn('enforceLayerOrder:', e);
+  }
 }
 
 /* ---------------------------------------------------------------
@@ -181,14 +183,15 @@ async function loadAllLayers() {
 
   if (selectedLayer) { selectedLayer.setStyle(styleTI()); selectedLayer = null; }
   clearOverlays();
-
   updatePanelAll();
 
   if (tiLayer.getLayers().length)
     map.fitBounds(tiLayer.getBounds(), { padding: [30, 30] });
 
   const nomes = [];
-  tiLayer.eachLayer(l => { if (l.feature) nomes.push(l.feature.properties[CFG.fields.nome]); });
+  tiLayer.eachLayer(l => {
+    if (l.feature) nomes.push(l.feature.properties[CFG.fields.nome]);
+  });
 
   const total = nomes.length * Object.keys(CFG.perTi).length;
   let carregados = 0;
@@ -196,45 +199,51 @@ async function loadAllLayers() {
   setLoaderText(`Carregando camadas… (0 / ${total})`);
   showLoader(true);
 
-  const jobs = [];
-  for (const nome of nomes) {
-    const slug = slugify(nome);
-    for (const [key, conf] of Object.entries(CFG.perTi)) {
-      jobs.push(
-        fetchGeoJSON(`${CFG.dataDir}/por_ti/${conf.folder}/${slug}.geojson`)
-          .then(gj => {
-            if (gj) overlay[key].addData(gj);
-            carregados++;
-            setLoaderText(`Carregando camadas… (${carregados} / ${total})`);
-          })
-      );
-    }
-  }
-
-  // Renderiza todas as aldeias
-  if (allAldeias) {
-    allAldeias.features.forEach(pt => {
-      try {
-        const [lng, lat] = pt.geometry.coordinates;
-        const m = aldeiaMarker([lat, lng]);
-        const nm = pt.properties &&
-          (pt.properties.nome_aldei || pt.properties.nome || '');
-        if (nm) m.bindPopup(
-          '<div class="popup-title">' + nm + '</div>' +
-          '<div class="popup-sub">Aldeia</div>'
+  try {
+    const jobs = [];
+    for (const nome of nomes) {
+      const slug = slugify(nome);
+      for (const [key, conf] of Object.entries(CFG.perTi)) {
+        jobs.push(
+          fetchGeoJSON(`${CFG.dataDir}/por_ti/${conf.folder}/${slug}.geojson`)
+            .then(gj => {
+              try { if (gj) overlay[key].addData(gj); }
+              catch (e) { console.warn('addData falhou', key, slug, e); }
+              carregados++;
+              setLoaderText(`Carregando camadas… (${carregados} / ${total})`);
+            })
         );
-        overlay.aldeias.addLayer(m);
-      } catch(e) { /* geometria inválida */ }
-    });
-    document.getElementById('v-aldeias').textContent =
-      fmtInt(allAldeias.features.length);
+      }
+    }
+
+    // Renderiza todas as aldeias
+    if (allAldeias) {
+      allAldeias.features.forEach(pt => {
+        try {
+          const [lng, lat] = pt.geometry.coordinates;
+          const m = aldeiaMarker([lat, lng]);
+          const nm = pt.properties &&
+            (pt.properties.nome_aldei || pt.properties.nome || '');
+          if (nm) m.bindPopup(
+            '<div class="popup-title">' + nm + '</div>' +
+            '<div class="popup-sub">Aldeia</div>'
+          );
+          overlay.aldeias.addLayer(m);
+        } catch (e) { /* geometria inválida */ }
+      });
+      document.getElementById('v-aldeias').textContent =
+        fmtInt(allAldeias.features.length);
+    }
+
+    await Promise.all(jobs);
+
+    enforceLayerOrder();
+    applyVisibility();
+  } catch (e) {
+    console.error('Erro em loadAllLayers:', e);
+  } finally {
+    showLoader(false);
   }
-
-  await Promise.all(jobs);
-
-  enforceLayerOrder();
-  applyVisibility();
-  setTimeout(() => showLoader(false), 800);
 }
 
 /* ---------------------------------------------------------------
@@ -287,22 +296,30 @@ async function selectTI(nome) {
   setLoaderText('Carregando camadas…');
   showLoader(true);
 
-  const slug = slugify(nome);
-  const jobs = Object.entries(CFG.perTi).map(async ([key, conf]) => {
-    const gj = await fetchGeoJSON(
-      `${CFG.dataDir}/por_ti/${conf.folder}/${slug}.geojson`
-    );
-    if (gj) overlay[key].addData(gj);
-  });
+  try {
+    const slug = slugify(nome);
+    const jobs = Object.entries(CFG.perTi).map(async ([key, conf]) => {
+      const gj = await fetchGeoJSON(
+        `${CFG.dataDir}/por_ti/${conf.folder}/${slug}.geojson`
+      );
+      if (gj) {
+        try { overlay[key].addData(gj); }
+        catch (e) { console.warn('addData falhou', key, slug, e); }
+      }
+    });
 
-  await Promise.all(jobs);
+    await Promise.all(jobs);
 
-  const nAldeias = renderAldeiasInside(tiFeature);
-  document.getElementById('v-aldeias').textContent = fmtInt(nAldeias);
+    const nAldeias = renderAldeiasInside(tiFeature);
+    document.getElementById('v-aldeias').textContent = fmtInt(nAldeias);
 
-  enforceLayerOrder();
-  applyVisibility();
-  setTimeout(() => showLoader(false), 800);
+    enforceLayerOrder();
+    applyVisibility();
+  } catch (e) {
+    console.error('Erro em selectTI:', e);
+  } finally {
+    showLoader(false);
+  }
 }
 
 /* ---------------------------------------------------------------
@@ -325,7 +342,7 @@ function renderAldeiasInside(tiFeature) {
         overlay.aldeias.addLayer(m);
         count++;
       }
-    } catch(e) { /* geometria inválida */ }
+    } catch (e) { /* geometria inválida */ }
   });
   return count;
 }
@@ -366,6 +383,8 @@ function applyVisibility() {
     if (visible[k]) { if (!map.hasLayer(layer)) layer.addTo(map); }
     else            { if ( map.hasLayer(layer)) map.removeLayer(layer); }
   });
+  // Garante hierarquia mesmo após reativar camadas individualmente
+  enforceLayerOrder();
 }
 
 function showLoader(on) {
