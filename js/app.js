@@ -168,16 +168,22 @@ async function loadAllLayers() {
   }
 
   if (allAldeias) {
+    const tiFeatures = [];
+    tiLayer.eachLayer(l => { if (l.feature) tiFeatures.push(l.feature); });
+    let count = 0;
     allAldeias.features.forEach(pt => {
       try {
+        const dentroDeAlgumaTI = tiFeatures.some(f => turf.booleanPointInPolygon(pt, f));
+        if (!dentroDeAlgumaTI) return;
         const [lng, lat] = pt.geometry.coordinates;
         const m = aldeiaMarker([lat, lng]);
         const nm = pt.properties && (pt.properties.nome_aldei || pt.properties.nome || '');
         if (nm) m.bindPopup('<div class="popup-title">' + nm + '</div><div class="popup-sub">Aldeia</div>');
         overlay.aldeias.addLayer(m);
+        count++;
       } catch(e) {}
     });
-    document.getElementById('v-aldeias').textContent = fmtInt(allAldeias.features.length);
+    document.getElementById('v-aldeias').textContent = fmtInt(count);
   }
 
   await Promise.all(jobs);
