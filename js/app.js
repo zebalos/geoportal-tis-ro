@@ -320,9 +320,6 @@ async function init() {
 
   const tis = await fetchGeoJSON(`${CFG.dataDir}/terras_indigenas.geojson`);
   if (tis) {
-    tis.features = tis.features.filter(f =>
-      TIS_VISIVEIS.includes(f.properties[CFG.fields.nome])
-    );
     tiLayer.addData(tis);
     if (tiLayer.getLayers().length)
       map.fitBounds(tiLayer.getBounds(), { padding: [30, 30] });
